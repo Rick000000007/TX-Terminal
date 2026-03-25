@@ -111,11 +111,13 @@ PTYResult PTY::open(const std::string& shell, const std::vector<std::string>& en
         // Set terminal attributes
         struct termios tios;
         if (tcgetattr(slave_fd, &tios) == 0) {
-            // Configure for typical terminal behavior
-            cfmakeraw(&tios);
-            tios.c_cc[VMIN] = 1;
-            tios.c_cc[VTIME] = 0;
-            tcsetattr(slave_fd, TCSANOW, &tios);
+       // Enable normal terminal behavior (like Termux)
+       tios.c_lflag |= (ICANON | ECHO | ISIG);
+       tios.c_iflag |= (ICRNL);
+       tios.c_oflag |= (OPOST);
+
+       tcsetattr(slave_fd, TCSANOW, &tios);
+
         }
         
         // Duplicate to stdio
