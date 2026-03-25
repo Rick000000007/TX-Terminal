@@ -119,7 +119,20 @@ class TerminalSurfaceView(context: Context) : SurfaceView(context), SurfaceHolde
             imm?.showSoftInput(this, InputMethodManager.SHOW_IMPLICIT)
         }
     }
+    override fun onAttachedToWindow() {
+         super.onAttachedToWindow()
 
+         isFocusable = true
+         isFocusableInTouchMode = true
+         requestFocus()
+         requestFocusFromTouch()
+
+    post {
+        val imm = context.getSystemService(Context.INPUT_METHOD_SERVICE) as InputMethodManager
+        imm.showSoftInput(this, InputMethodManager.SHOW_IMPLICIT)
+        }
+    }
+    
     fun setSession(session: TerminalSession?) {
         if (currentSession?.id == session?.id) return
 
@@ -151,7 +164,8 @@ class TerminalSurfaceView(context: Context) : SurfaceView(context), SurfaceHolde
         paint.textSize = size
         requestRender()
     }
-
+    
+    
     override fun surfaceCreated(holder: SurfaceHolder) {
         currentSession?.attachSurface(holder.surface)
         isRendering = true
@@ -202,20 +216,18 @@ class TerminalSurfaceView(context: Context) : SurfaceView(context), SurfaceHolde
     }
 
     override fun onTouchEvent(event: MotionEvent): Boolean {
-        if (event.action == MotionEvent.ACTION_DOWN) {
-            isFocusable = true
-            isFocusableInTouchMode = true
-            requestFocus()
-            requestFocusFromTouch()
-            post {
-                val imm = context.getSystemService(Context.INPUT_METHOD_SERVICE) as? InputMethodManager
-                imm?.restartInput(this)
-                imm?.showSoftInput(this, InputMethodManager.SHOW_IMPLICIT)
-            }
-            performClick()
-        }
-        return true
+    if (event.action == MotionEvent.ACTION_DOWN) {
+        requestFocus()
+        requestFocusFromTouch()
+
+        val imm = context.getSystemService(Context.INPUT_METHOD_SERVICE) as InputMethodManager
+        imm.restartInput(this)
+        imm.showSoftInput(this, InputMethodManager.SHOW_FORCED)
+
+        performClick()
     }
+    return true
+}
 
     override fun performClick(): Boolean {
         super.performClick()
@@ -232,7 +244,9 @@ class TerminalSurfaceView(context: Context) : SurfaceView(context), SurfaceHolde
 
     override fun isFocused(): Boolean = true
 
-    override fun onCheckIsTextEditor(): Boolean = true
+    override fun onCheckIsTextEditor(): Boolean {
+    return true
+}
 
     override fun onKeyDown(keyCode: Int, event: KeyEvent): Boolean {
         val session = currentSession ?: return super.onKeyDown(keyCode, event)
@@ -268,9 +282,11 @@ class TerminalSurfaceView(context: Context) : SurfaceView(context), SurfaceHolde
     override fun onCreateInputConnection(outAttrs: EditorInfo): InputConnection {
         outAttrs.inputType = android.text.InputType.TYPE_CLASS_TEXT or android.text.InputType.TYPE_TEXT_FLAG_NO_SUGGESTIONS
         outAttrs.imeOptions = EditorInfo.IME_FLAG_NO_EXTRACT_UI or EditorInfo.IME_ACTION_NONE
+        outAttrs.imeOptions = outAttrs.imeOptions or EditorInfo.IME_FLAG_NO_FULLSCREEN
+
         outAttrs.initialSelStart = 0
         outAttrs.initialSelEnd = 0
-        return object : BaseInputConnection(this, false) {
+        return object : BaseInputConnection(this, true) {
             override fun commitText(text: CharSequence?, newCursorPosition: Int): Boolean {
                 val value = text?.toString().orEmpty()
                 if (value.isNotEmpty()) {
