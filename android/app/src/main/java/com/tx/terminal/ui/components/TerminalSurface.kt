@@ -1,5 +1,6 @@
 package com.tx.terminal.ui.components
 
+import androidx.compose.foundation.focusable
 import androidx.compose.ui.focus.FocusRequester
 import androidx.compose.ui.focus.focusRequester
 import androidx.compose.ui.focus.focusable
