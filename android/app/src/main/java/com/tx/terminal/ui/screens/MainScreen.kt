@@ -8,6 +8,7 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.*
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
+import androidx.compose.runtime.getValue
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.input.nestedscroll.nestedScroll
 import androidx.compose.ui.graphics.Color
@@ -22,21 +23,20 @@ fun MainScreen(viewModel: TerminalViewModel) {
     val scrollBehavior = TopAppBarDefaults.pinnedScrollBehavior()
     val drawerState = rememberDrawerState(initialValue = DrawerValue.Closed)
     val scope = rememberCoroutineScope()
-    
+
     var showNewSessionDialog by remember { mutableStateOf(false) }
     var showSettingsDialog by remember { mutableStateOf(false) }
-    
+
     val sessions by viewModel.sessions.collectAsState()
     val activeSessionId by viewModel.activeSessionId.collectAsState()
     val showExtraKeys by viewModel.showExtraKeys.collectAsState()
     val activeSession = viewModel.activeSession
     val debugScreen = activeSession?.getScreenContent() ?: ""
-    
-    // Get active session title
-    val activeSessionTitle by remember(activeSession) {
-        activeSession?.title ?: mutableStateOf("TX Terminal")
-    }.collectAsState(initial = "TX Terminal")
-    
+
+    // ✅ FIXED: Proper StateFlow handling
+    val activeSessionTitle =
+        activeSession?.title?.collectAsState()?.value ?: "TX Terminal"
+
     ModalNavigationDrawer(
         drawerState = drawerState,
         drawerContent = {
@@ -47,7 +47,7 @@ fun MainScreen(viewModel: TerminalViewModel) {
                     style = MaterialTheme.typography.titleLarge
                 )
                 Divider()
-                
+
                 NavigationDrawerItem(
                     icon = { Icon(Icons.Default.Add, contentDescription = null) },
                     label = { Text("New Session") },
@@ -57,7 +57,7 @@ fun MainScreen(viewModel: TerminalViewModel) {
                         scope.launch { drawerState.close() }
                     }
                 )
-                
+
                 NavigationDrawerItem(
                     icon = { Icon(Icons.Default.Settings, contentDescription = null) },
                     label = { Text("Settings") },
@@ -67,25 +67,25 @@ fun MainScreen(viewModel: TerminalViewModel) {
                         scope.launch { drawerState.close() }
                     }
                 )
-                
+
                 Divider(modifier = Modifier.padding(vertical = 8.dp))
-                
+
                 Text(
                     "Sessions",
                     modifier = Modifier.padding(horizontal = 16.dp, vertical = 8.dp),
                     style = MaterialTheme.typography.labelSmall
                 )
-                
+
                 sessions.forEach { session ->
                     val sessionTitle by session.title.collectAsState()
                     val sessionRunning by session.isRunning.collectAsState()
-                    
+
                     NavigationDrawerItem(
-                        icon = { 
+                        icon = {
                             Icon(
-                                if (session.id == activeSessionId) 
-                                    Icons.Default.Terminal 
-                                else 
+                                if (session.id == activeSessionId)
+                                    Icons.Default.Terminal
+                                else
                                     Icons.Default.Circle,
                                 contentDescription = null
                             )
@@ -110,8 +110,8 @@ fun MainScreen(viewModel: TerminalViewModel) {
             modifier = Modifier.nestedScroll(scrollBehavior.nestedScrollConnection),
             topBar = {
                 TopAppBar(
-                    title = { 
-                        Text(activeSessionTitle)
+                    title = {
+                        Text(text = activeSessionTitle) // ✅ FIXED
                     },
                     navigationIcon = {
                         IconButton(onClick = { scope.launch { drawerState.open() } }) {
@@ -119,9 +119,8 @@ fun MainScreen(viewModel: TerminalViewModel) {
                         }
                     },
                     actions = {
-                        // Tab switcher
                         if (sessions.size > 1) {
-                            IconButton(onClick = { 
+                            IconButton(onClick = {
                                 val currentIndex = sessions.indexOfFirst { it.id == activeSessionId }
                                 val nextIndex = (currentIndex + 1) % sessions.size
                                 viewModel.switchToSession(sessions[nextIndex].id)
@@ -129,12 +128,12 @@ fun MainScreen(viewModel: TerminalViewModel) {
                                 Icon(Icons.Default.SwitchLeft, contentDescription = "Switch Tab")
                             }
                         }
-                        
-                        // More actions
+
                         var menuExpanded by remember { mutableStateOf(false) }
                         IconButton(onClick = { menuExpanded = true }) {
                             Icon(Icons.Default.MoreVert, contentDescription = "More")
                         }
+
                         DropdownMenu(
                             expanded = menuExpanded,
                             onDismissRequest = { menuExpanded = false }
@@ -145,68 +144,29 @@ fun MainScreen(viewModel: TerminalViewModel) {
                                     showNewSessionDialog = true
                                     menuExpanded = false
                                 },
-                                leadingIcon = {
-                                    Icon(Icons.Default.Add, contentDescription = null)
-                                }
+                                leadingIcon = { Icon(Icons.Default.Add, null) }
                             )
+
                             DropdownMenuItem(
                                 text = { Text("Close Session") },
                                 onClick = {
                                     activeSessionId?.let { viewModel.closeSession(it) }
                                     menuExpanded = false
                                 },
-                                leadingIcon = {
-                                    Icon(Icons.Default.Close, contentDescription = null)
-                                }
-                            )
-                            Divider()
-                            DropdownMenuItem(
-                                text = { Text("Copy") },
-                                onClick = {
-                                    viewModel.copyToClipboard()
-                                    menuExpanded = false
-                                },
-                                leadingIcon = {
-                                    Icon(Icons.Default.ContentCopy, contentDescription = null)
-                                }
-                            )
-                            DropdownMenuItem(
-                                text = { Text("Paste") },
-                                onClick = {
-                                    viewModel.pasteFromClipboard()
-                                    menuExpanded = false
-                                },
-                                leadingIcon = {
-                                    Icon(Icons.Default.ContentPaste, contentDescription = null)
-                                }
-                            )
-                            Divider()
-                            DropdownMenuItem(
-                                text = { Text(if (showExtraKeys) "Hide Extra Keys" else "Show Extra Keys") },
-                                onClick = {
-                                    viewModel.toggleExtraKeys()
-                                    menuExpanded = false
-                                }
-                            )
-                            DropdownMenuItem(
-                                text = { Text("Settings") },
-                                onClick = {
-                                    showSettingsDialog = true
-                                    menuExpanded = false
-                                }
+                                leadingIcon = { Icon(Icons.Default.Close, null) }
                             )
                         }
-                    },
-                    scrollBehavior = scrollBehavior
+                    }
                 )
             }
         ) { paddingValues ->
+
             Column(
                 modifier = Modifier
                     .fillMaxSize()
                     .padding(paddingValues)
             ) {
-                // Tab bar
+
                 if (sessions.size > 1) {
                     TabBar(
                         sessions = sessions,
@@ -215,14 +175,14 @@ fun MainScreen(viewModel: TerminalViewModel) {
                         onSessionClosed = { viewModel.closeSession(it) }
                     )
                 }
-                
-                // Terminal view
+
                 Box(modifier = Modifier.weight(1f)) {
                     TerminalSurface(
                         viewModel = viewModel,
                         modifier = Modifier.fillMaxSize()
                     )
 
+                    // Debug overlay
                     Text(
                         text = debugScreen.ifEmpty { "<empty screen buffer>" },
                         color = Color.White,
@@ -233,8 +193,7 @@ fun MainScreen(viewModel: TerminalViewModel) {
                             .padding(8.dp)
                     )
                 }
-                
-                // Extra keys
+
                 if (showExtraKeys) {
                     ExtraKeysBar(
                         onKeyPressed = { key, modifiers ->
@@ -249,18 +208,17 @@ fun MainScreen(viewModel: TerminalViewModel) {
             }
         }
     }
-    
-    // Dialogs
+
     if (showNewSessionDialog) {
         NewSessionDialog(
             onDismiss = { showNewSessionDialog = false },
-            onConfirm = { name ->
-                viewModel.createSession(name)
+            onConfirm = {
+                viewModel.createSession(it)
                 showNewSessionDialog = false
             }
         )
     }
-    
+
     if (showSettingsDialog) {
         SettingsDialog(
             viewModel = viewModel,

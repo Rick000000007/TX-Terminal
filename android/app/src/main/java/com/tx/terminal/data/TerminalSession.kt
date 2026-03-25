@@ -4,8 +4,6 @@ import android.os.Handler
 import android.os.Looper
 import android.os.Message
 import android.os.ParcelFileDescriptor
-import android.system.Os
-import android.system.OsConstants
 import android.util.Log
 import android.view.Surface
 import com.tx.terminal.TXApplication
@@ -539,22 +537,8 @@ class TerminalSession(
      * Uses a compatibility approach for Android.
      */
     private fun waitForProcess(pid: Int): Int {
-        return try {
-            // Use Os.waitpid if available (API 21+)
-            val status = IntArray(1)
-            val result = Os.waitpid(pid, status, 0)
-            if (result == pid) {
-                parseExitStatus(status[0])
-            } else {
-                -1
-            }
-        } catch (e: Exception) {
-            Log.e(TAG, "waitForProcess error", e)
-            // Fallback: poll for process exit
-            waitForProcessFallback(pid)
-        }
+        return waitForProcessFallback(pid)
     }
-
     /**
      * Parse exit status from waitpid status value.
      */
@@ -580,16 +564,9 @@ class TerminalSession(
     /**
      * Fallback method to wait for process exit by polling.
      */
-    private fun waitForProcessFallback(pid: Int): Int {
-        var attempts = 0
-        while (attempts < 300) { // Max 30 seconds
-            try {
-                // Try to send signal 0 to check if process exists
-                android.os.Process.sendSignal(pid, 0)
-                // If we get here, process still exists
-                Thread.sleep(100)
-                attempts++
-            } catch (e: Exception) {
+    private fun waitForProcess(pid: Int): Int {
+        return waitForProcessFallback(pid)
+    }
                 // Process likely exited
                 return 0
             }
