@@ -531,71 +531,46 @@ class TerminalSession(
         }
         ptyFd = -1
     }
-
+    
     /**
-     * Wait for a process to exit using native waitpid.
-     * Uses a compatibility approach for Android.
-     */
-    private fun waitForProcess(pid: Int): Int {
-        // Direct fallback (Os.waitpid not reliable across environments)
-        return waitForProcessFallback(pid)
-    } else {
-                -1
-            }
-        } catch (e: Exception) {
-            Log.e(TAG, "waitForProcess error", e)
-            // Fallback: poll for process exit
-            waitForProcessFallback(pid)
-        }
+ * Wait for a process to exit.
+ * Uses fallback polling for maximum compatibility.
+ */
+private fun waitForProcess(pid: Int): Int {
+    return waitForProcessFallback(pid)
+}
+
+/**
+ * Parse exit status (kept for future use).
+ */
+private fun parseExitStatus(status: Int): Int {
+    return when {
+        (status and 0x7F) == 0 -> (status shr 8) and 0xFF
+        else -> -(status and 0x7F)
     }
+}
 
-    /**
-     * Parse exit status from waitpid status value.
-     */
-    private fun parseExitStatus(status: Int): Int {
-        // WIFEXITED: check if process exited normally
-        // WEXITSTATUS: get exit code
-        // WIFSIGNALED: check if process was terminated by signal
-        // WTERMSIG: get signal number
-        return when {
-            // Normal exit: status & 0x7F == 0
-            (status and 0x7F) == 0 -> {
-                // Exit code is in upper bits
-                (status shr 8) and 0xFF
-            }
-            // Signaled: signal is in lower 7 bits
-            else -> {
-                // Return negative signal number
-                -(status and 0x7F)
-            }
-        }
-    }
-
-    /**
-     * Fallback method to wait for process exit by polling.
-     */
-    private fun waitForProcessFallback(pid: Int): Int {
-        var attempts = 0
-        while (attempts < 300) { // Max 30 seconds
-            try {
-                // Try to send signal 0 to check if process exists
-                android.os.Process.sendSignal(pid, 0)
-                // If we get here, process still exists
-                Thread.sleep(100)
-                attempts++
-            } catch (e: Exception) {
-                // Process likely exited
-                return 0
-            }
-        }
-        // Timeout - force kill
+/**
+ * Fallback method to wait for process exit by polling.
+ */
+private fun waitForProcessFallback(pid: Int): Int {
+    var attempts = 0
+    while (attempts < 300) {
         try {
-            android.os.Process.killProcess(pid)
-        } catch (e: Exception) {
-            // Ignore
+            android.os.Process.sendSignal(pid, 0)
+            Thread.sleep(100)
+            attempts++
+        } catch (_: Exception) {
+            return 0
         }
-        return -1
     }
+
+    try {
+        android.os.Process.killProcess(pid)
+    } catch (_: Exception) {}
+
+    return -1
+}
 }
 
 
