@@ -114,22 +114,16 @@ class TerminalSession(
         }
 
         // Get runtime environment
-        val runtime = TXApplication.instance.runtime
-        val env = if (runtime.isBootstrapped()) {
-            runtime.getEnvironmentList().toTypedArray()
-        } else {
-            arrayOf(
-                "TERM=xterm-256color",
-                "COLORTERM=truecolor",
-                "PATH=/system/bin:/system/xbin"
-            )
-        }
-
+        val env = arrayOf(
+        "TERM=xterm-256color",
+        "PATH=/system/bin:/system/xbin",
+        "HOME=/data/data/com.tx.terminal/files/home",
+        "PWD=/data/data/com.tx.terminal/files/home"
+         )
         Log.d(TAG, "Environment: ${env.joinToString()}")
 
         // Create native terminal
         nativeHandle = NativeTerminal.create(columns, rows, shellPath, initialCommand, env)
-
         if (nativeHandle == 0L) {
             Log.e(TAG, "Failed to create native terminal")
             return false
@@ -140,6 +134,7 @@ class TerminalSession(
 
         // Start I/O threads
         startIOThreads()
+        sendText("cd /data/data/com.tx.terminal/files/home\n")
 
         Log.d(TAG, "Session initialized: $id (handle=$nativeHandle)")
         return true
