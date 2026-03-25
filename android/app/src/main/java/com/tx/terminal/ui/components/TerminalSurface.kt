@@ -1,5 +1,11 @@
 package com.tx.terminal.ui.components
 
+import androidx.compose.ui.focus.FocusRequester
+import androidx.compose.ui.focus.focusRequester
+import androidx.compose.ui.focus.focusable
+import androidx.compose.ui.platform.LocalSoftwareKeyboardController
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.LaunchedEffect
 import android.content.Context
 import android.graphics.Paint
 import android.graphics.Typeface
@@ -38,6 +44,13 @@ fun TerminalSurface(
     modifier: Modifier = Modifier
 ) {
     val activeSessionId by viewModel.activeSessionId.collectAsState()
+    val focusRequester = remember { FocusRequester() }
+    val keyboardController = LocalSoftwareKeyboardController.current
+
+    LaunchedEffect(Unit) {
+    focusRequester.requestFocus()
+    keyboardController?.show()
+}
     val sessions by viewModel.sessions.collectAsState()
     val backgroundColor by viewModel.backgroundColor.collectAsState()
     val foregroundColor by viewModel.foregroundColor.collectAsState()
@@ -48,7 +61,9 @@ fun TerminalSurface(
     Box(
         modifier = modifier
             .background(Color(backgroundColor))
-            
+            .focusRequester(focusRequester)
+            .focusable()
+
     ) {
         AndroidView(
             factory = { ctx ->
