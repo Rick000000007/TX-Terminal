@@ -4,8 +4,6 @@ import android.os.Handler
 import android.os.Looper
 import android.os.Message
 import android.os.ParcelFileDescriptor
-import android.system.Os
-import android.system.OsConstants
 import android.util.Log
 import android.view.Surface
 import com.tx.terminal.TXApplication
@@ -539,13 +537,9 @@ class TerminalSession(
      * Uses a compatibility approach for Android.
      */
     private fun waitForProcess(pid: Int): Int {
-        return try {
-            // Use Os.waitpid if available (API 21+)
-            val status = IntArray(1)
-            val result = Os.waitpid(pid, status, 0)
-            if (result == pid) {
-                parseExitStatus(status[0])
-            } else {
+        // Direct fallback (Os.waitpid not reliable across environments)
+        return waitForProcessFallback(pid)
+    } else {
                 -1
             }
         } catch (e: Exception) {
