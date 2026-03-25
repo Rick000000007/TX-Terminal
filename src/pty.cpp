@@ -4,6 +4,8 @@
 #include <sys/ioctl.h>
 #include <sys/wait.h>
 #include <sys/select.h>
+#include <sys/stat.h>
+#include <signal.h>
 #include <cerrno>
 #include <cstring>
 #include <iostream>
@@ -23,7 +25,7 @@ namespace tx {
 PTY::PTY() = default;
 
 PTY::~PTY() {
-    this->close();
+    close();
 }
 
 PTY::PTY(PTY&& other) noexcept
@@ -41,7 +43,7 @@ PTY::PTY(PTY&& other) noexcept
 
 PTY& PTY::operator=(PTY&& other) noexcept {
     if (this != &other) {
-    this->close();
+        close();
         master_fd_ = other.master_fd_;
         child_pid_ = other.child_pid_;
         cols_ = other.cols_;
@@ -56,7 +58,9 @@ PTY& PTY::operator=(PTY&& other) noexcept {
     return *this;
 }
 
-PTYResult PTY::open(const std::string& shell, const std::vector<std::string>& env) {
+PTYResult PTY::open(const std::string& shell, 
+                    const std::vector<std::string>& env,
+                    const std::string& cwd) {
     if (master_fd_ >= 0) {
         return PTYResult::fail("PTY already open");
     }
@@ -69,19 +73,19 @@ PTYResult PTY::open(const std::string& shell, const std::vector<std::string>& en
     
     // Grant and unlock PTY
     if (grantpt(master_fd_) < 0) {
-    this->close();
+        close();
         return PTYResult::fail(std::string("grantpt failed: ") + strerror(errno));
     }
     
     if (unlockpt(master_fd_) < 0) {
-    this->close();
+        close();
         return PTYResult::fail(std::string("unlockpt failed: ") + strerror(errno));
     }
     
     // Get slave name
     char* slave_name = ptsname(master_fd_);
     if (!slave_name) {
-    this->close();
+        close();
         return PTYResult::fail(std::string("ptsname failed: ") + strerror(errno));
     }
     
@@ -90,7 +94,7 @@ PTYResult PTY::open(const std::string& shell, const std::vector<std::string>& en
     // Fork child process
     child_pid_ = fork();
     if (child_pid_ < 0) {
-    this->close();
+        close();
         return PTYResult::fail(std::string("fork failed: ") + strerror(errno));
     }
     
@@ -108,16 +112,19 @@ PTYResult PTY::open(const std::string& shell, const std::vector<std::string>& en
             _exit(1);
         }
         
+        // Make slave PTY the controlling terminal
+        if (ioctl(slave_fd, TIOCSCTTY, 0) < 0) {
+            _exit(1);
+        }
+
         // Set terminal attributes
         struct termios tios;
         if (tcgetattr(slave_fd, &tios) == 0) {
-       // Enable normal terminal behavior (like Termux)
-       tios.c_lflag |= (ICANON | ECHO | ISIG);
-       tios.c_iflag |= (ICRNL);
-       tios.c_oflag |= (OPOST);
-
-       tcsetattr(slave_fd, TCSANOW, &tios);
-
+            // Configure for typical terminal behavior
+            cfmakeraw(&tios);
+            tios.c_cc[VMIN] = 1;
+            tios.c_cc[VTIME] = 0;
+            tcsetattr(slave_fd, TCSANOW, &tios);
         }
         
         // Duplicate to stdio
@@ -136,9 +143,32 @@ PTYResult PTY::open(const std::string& shell, const std::vector<std::string>& en
         fcntl(STDOUT_FILENO, F_SETFD, 0);
         fcntl(STDERR_FILENO, F_SETFD, 0);
         
+        // Change to working directory if specified
+        // The cwd is always the app-private directory passed from Java
+        if (!cwd.empty()) {
+            // Create the directory if it doesn't exist
+            struct stat st;
+            if (stat(cwd.c_str(), &st) != 0) {
+                // Directory doesn't exist, try to create it
+                if (mkdir(cwd.c_str(), 0755) == 0 || errno == EEXIST) {
+                    chdir(cwd.c_str());
+                }
+                // If creation fails, shell will start in inherited directory
+            } else if (S_ISDIR(st.st_mode)) {
+                // Directory exists, change to it
+                chdir(cwd.c_str());
+            }
+            // If not a directory or chdir fails, shell starts in inherited directory
+        }
+        
         // Set environment variables
-        setenv("TERM", "xterm-256color", 1);
-        setenv("COLORTERM", "truecolor", 1);
+        // Note: TERM and COLORTERM are set by the JNI layer with proper values
+        for (const auto& var : env) {
+            size_t pos = var.find('=');
+            if (pos != std::string::npos) {
+                setenv(var.substr(0, pos).c_str(), var.substr(pos + 1).c_str(), 1);
+            }
+        }
         
         // Set terminal size
         struct winsize ws;
@@ -147,14 +177,6 @@ PTYResult PTY::open(const std::string& shell, const std::vector<std::string>& en
         ws.ws_xpixel = 0;
         ws.ws_ypixel = 0;
         ioctl(STDOUT_FILENO, TIOCSWINSZ, &ws);
-        
-        // Apply custom environment
-        for (const auto& var : env) {
-            size_t pos = var.find('=');
-            if (pos != std::string::npos) {
-                setenv(var.substr(0, pos).c_str(), var.substr(pos + 1).c_str(), 1);
-            }
-        }
         
         // Execute shell
         execl(shell.c_str(), shell.c_str(), nullptr);
